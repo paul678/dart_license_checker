@@ -37,4 +37,4 @@ By default, `dart_license_checker` skips any path dependencies.
 
 If you want to analyze path dependencies too, you can use the `--check-path-dependencies` flag:
 
-`dart_license_checker --show-transitive-dependencies`
+`dart_license_checker --check-path-dependencies`
