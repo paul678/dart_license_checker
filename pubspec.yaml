@@ -1,20 +1,21 @@
 name: dart_license_checker
 description: Shows you which licenses your dependencies have.
-version: 1.1.0
+version: 1.2.0
 homepage: https://github.com/redsolver/dart_license_checker
 
 environment:
-  sdk: ">=2.10.0 <3.0.0"
+  sdk: ">=2.13.0 <3.0.0"
 
 dependencies:
-  path: ^1.7.0
+  path: 1.8.0
   tint: ^2.0.0
-  pana: ^0.15.4
-  pubspec_parse: ^0.1.8
-  barbecue: ^0.2.0
+  # Fixed on version lower than 0.21.4 to avoid https://github.com/dart-lang/pana/pull/982/files
+  pana: 0.20.0
+  pubspec_parse: ^1.1.0
+  barbecue: ^0.4.0
 
 dev_dependencies:
-  pedantic: ^1.9.0
+  pedantic: ^1.11.1
 
 executables:
   dart_license_checker: dart_license_checker

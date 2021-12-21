@@ -1,45 +1,17 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:pana/pana.dart';
-import 'package:path/path.dart';
 import 'package:barbecue/barbecue.dart';
+import 'package:pana/pana.dart';
+import 'package:pana/src/license.dart';
+import 'package:path/path.dart';
 import 'package:tint/tint.dart';
 
-const possibleLicenseFileNames = [
-  // LICENSE
-  'LICENSE',
-  'LICENSE.md',
-  'license',
-  'license.md',
-  'License',
-  'License.md',
-  // LICENCE
-  'LICENCE',
-  'LICENCE.md',
-  'licence',
-  'licence.md',
-  'Licence',
-  'Licence.md',
-  // COPYING
-  'COPYING',
-  'COPYING.md',
-  'copying',
-  'copying.md',
-  'Copying',
-  'Copying.md',
-  // UNLICENSE
-  'UNLICENSE',
-  'UNLICENSE.md',
-  'unlicense',
-  'unlicense.md',
-  'Unlicense',
-  'Unlicense.md',
-];
-
 void main(List<String> arguments) async {
+  final urlChecker = UrlChecker();
   final showTransitiveDependencies =
       arguments.contains('--show-transitive-dependencies');
+  final checkPathDependencies = arguments.contains('--check-path-dependencies');
   final pubspecFile = File('pubspec.yaml');
 
   if (!pubspecFile.existsSync()) {
@@ -73,32 +45,31 @@ void main(List<String> arguments) async {
       }
     }
 
-    String rootUri = package['rootUri'];
-    if (rootUri.startsWith('file://')) {
-      rootUri = rootUri.substring(7);
+    final license = await extractLicense(
+      urlChecker: urlChecker,
+      packageName: name,
+      packageUri: Uri.parse(package['rootUri']),
+    );
+
+    if (license.isPathDependency && !checkPathDependencies) {
+      print('Skipping local dependency ${license.dependencyName}'.gray());
+      continue;
     }
 
-    LicenseFile license;
-
-    for (final fileName in possibleLicenseFileNames) {
-      final file = File(join(rootUri, fileName));
-      if (file.existsSync()) {
-        license = await detectLicenseInFile(file);
-        break;
-      }
-    }
-
-    if (license != null) {
-      rows.add(Row(cells: [
-        Cell(name, style: CellStyle(alignment: TextAlignment.TopRight)),
-        Cell(formatLicenseName(license)),
-      ]));
-    } else {
-      rows.add(Row(cells: [
-        Cell(name, style: CellStyle(alignment: TextAlignment.TopRight)),
-        Cell('No license file'.grey()),
-      ]));
-    }
+    rows.add(
+      Row(
+        cells: [
+          Cell(
+            license.dependencyName,
+            style: CellStyle(
+              alignment: TextAlignment.TopRight,
+            ),
+          ),
+          Cell(license.licenseName),
+          Cell(license.licenseUrl),
+        ],
+      ),
+    );
   }
   print(
     Table(
@@ -108,10 +79,11 @@ void main(List<String> arguments) async {
           Row(
             cells: [
               Cell(
-                'Package Name  '.bold(),
+                'Package Name'.bold(),
                 style: CellStyle(alignment: TextAlignment.TopRight),
               ),
               Cell('License'.bold()),
+              Cell('URL'.bold()),
             ],
             cellStyle: CellStyle(borderBottom: true),
           ),
@@ -123,31 +95,59 @@ void main(List<String> arguments) async {
       ),
     ).render(),
   );
-
   exit(0);
 }
 
-String formatLicenseName(LicenseFile license) {
-  if (license.name == 'unknown') {
-    return license.name.red();
-  } else if (copyleftOrProprietaryLicenses.contains(license.name)) {
-    return license.shortFormatted.red();
-  } else if (permissiveLicenses.contains(license.name)) {
-    return license.shortFormatted.green();
-  } else {
-    return license.shortFormatted.yellow();
+Future<DependencyLicenseInfo> extractLicense({
+  required UrlChecker urlChecker,
+  required String packageName,
+  required packageUri,
+}) async {
+  var isPathDependency = false;
+  if (!packageUri.isScheme('file')) {
+    isPathDependency = true;
   }
+  final packageRootPath = packageUri.toFilePath();
+
+  var license = await detectLicenseInDir(packageRootPath);
+  Pubspec? pubspecData;
+  final pubspecFile = File(join(packageRootPath, 'pubspec.yaml'));
+  if (pubspecFile.existsSync()) {
+    final content = utf8.decode(
+      await pubspecFile.readAsBytes(),
+      allowMalformed: true,
+    );
+    pubspecData = Pubspec.parseYaml(content);
+  }
+
+  if (pubspecData != null) {
+    license = license?.change(
+      url: await getLicenseUrl(
+        urlChecker,
+        pubspecData.repository ?? pubspecData.homepage,
+        license,
+      ),
+    );
+  }
+  return DependencyLicenseInfo(
+    dependencyName: packageName,
+    isPathDependency: isPathDependency,
+    license: license,
+  );
 }
 
-// TODO LGPL, AGPL, MPL
+class DependencyLicenseInfo {
+  DependencyLicenseInfo({
+    required this.dependencyName,
+    required this.isPathDependency,
+    required this.license,
+  });
 
-const permissiveLicenses = [
-  'MIT',
-  'BSD',
-  'Apache',
-  'Unlicense',
-];
+  final String dependencyName;
+  final bool isPathDependency;
+  final LicenseFile? license;
 
-const copyleftOrProprietaryLicenses = [
-  'GPL',
-];
+  String get licenseName => license?.name ?? 'N/A';
+
+  String get licenseUrl => license?.url ?? 'N/A';
+}
