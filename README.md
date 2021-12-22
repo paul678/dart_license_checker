@@ -16,7 +16,7 @@ Shows you which licenses your dependencies have.
 
 ## Install
 
-`flutter pub global activate dart_license_checker`
+`flutter pub global activate --source git https://github.com/paul678/dart_license_checker.git`
 
 ## Use
 
